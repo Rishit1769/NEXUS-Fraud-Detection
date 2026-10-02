@@ -8,11 +8,16 @@ import type { DeterministicAnalysis, ExtractedUrlLike } from "@/lib/analysis/typ
  * decides: the final score/risk level always comes from the deterministic
  * rule engine. Which provider/model serves this is chosen by the admin
  * (SystemSetting override) with env as the default.
+ *
+ * Default provider is OpenCode's Go gateway, which (for third-party clients)
+ * requires a descriptive User-Agent and a stable `x-opencode-session` header.
  */
 
 const TIMEOUT_MS = 12_000;
+const USER_AGENT = "nexus-fraud-detection/1.0";
+const OPENCODE_PROVIDERS = new Set(["opencode", "zen", "opencode-go"]);
 
-export interface DeepSeekExplanation {
+export interface AiExplanation {
   summary: string;
   confidence: number;
   proposedRiskLevel: string;
@@ -63,11 +68,13 @@ function parseJsonResponse(text: string): RawAiOutput | null {
   }
 }
 
-export async function explainWithDeepSeek(params: {
+export async function explainWithAi(params: {
   text: string;
   urls: ExtractedUrlLike[];
   deterministic: DeterministicAnalysis;
-}): Promise<DeepSeekExplanation | null> {
+  /** Stable id used as the OpenCode routing session (e.g. conversation id). */
+  sessionId?: string;
+}): Promise<AiExplanation | null> {
   const config = await getAiConfig();
   if (!config?.apiKey) {
     return null;
@@ -79,10 +86,18 @@ export async function explainWithDeepSeek(params: {
   try {
     const endpoint = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+      "User-Agent": USER_AGENT,
+    };
+    if (OPENCODE_PROVIDERS.has(config.provider)) {
+      headers["x-opencode-session"] = params.sessionId?.slice(0, 200) || "nexus-fraud-detection";
+    }
+
     const payload = {
       model: config.model,
       temperature: 0.2,
-      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
@@ -102,10 +117,7 @@ export async function explainWithDeepSeek(params: {
 
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });

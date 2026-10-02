@@ -46,6 +46,14 @@ export async function predictWithModel(input: {
   requestId: string;
   text: string;
   urls: ExtractedUrlLike[];
+  /** Structured output from the preceding LLM stage. The current trained
+   * model does not use these fields as features, but receives them for
+   * traceability and future retraining with LLM-derived features. */
+  llmAnalysis?: {
+    proposedRiskLevel: string;
+    proposedScore: number;
+    confidence: number;
+  } | null;
 }): Promise<{ message: ModelPrediction | null; urls: ModelPrediction[] } | null> {
   if (!env.MODEL_API_URL) {
     return null;
@@ -65,6 +73,7 @@ export async function predictWithModel(input: {
         requestId: input.requestId,
         text: input.text,
         urls: input.urls.map((url) => url.normalizedUrl),
+        llmAnalysis: input.llmAnalysis ?? undefined,
       }),
       signal: controller.signal,
       cache: "no-store",
@@ -86,6 +95,11 @@ export async function predictWithModel(input: {
 export async function predictTransaction(input: {
   requestId: string;
   transaction: TransactionPayload;
+  llmAnalysis?: {
+    proposedRiskLevel: string;
+    proposedScore: number;
+    confidence: number;
+  } | null;
 }): Promise<ModelPrediction | null> {
   if (!env.MODEL_API_URL) {
     return null;
@@ -104,6 +118,7 @@ export async function predictTransaction(input: {
       body: JSON.stringify({
         requestId: input.requestId,
         transaction: input.transaction,
+        llmAnalysis: input.llmAnalysis ?? undefined,
       }),
       signal: controller.signal,
       cache: "no-store",

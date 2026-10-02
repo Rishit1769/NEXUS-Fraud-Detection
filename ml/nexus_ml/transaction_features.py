@@ -55,18 +55,30 @@ def _parse_hour_minute(value: object) -> tuple[int, int]:
         return 12, 0
 
 
+def _series(df: pd.DataFrame, name: str, default: object) -> pd.Series:
+    """Return a column, or a same-length Series of `default` when absent.
+
+    The single-row inference path may omit optional columns (e.g. Zip,
+    Merchant State); returning a scalar here would break the `.fillna`
+    / `.apply` calls that follow, so always materialize a Series.
+    """
+    if name in df.columns:
+        return df[name]
+    return pd.Series([default] * len(df), index=df.index)
+
+
 def clean_transaction_frame(df: pd.DataFrame) -> pd.DataFrame:
     """Clean raw IBM transaction rows into inference-ready numeric/categorical."""
     df = df.copy()
-    df["Amount"] = df.get("Amount", 0).apply(_parse_amount).astype(float)
+    df["Amount"] = _series(df, "Amount", 0).apply(_parse_amount).astype(float)
     if "Time" in df.columns:
         hours_minutes = df["Time"].apply(_parse_hour_minute)
         df["Hour"] = [hm[0] for hm in hours_minutes]
         df["Minute"] = [hm[1] for hm in hours_minutes]
     for col in ["Year", "Month", "Day"]:
-        df[col] = pd.to_numeric(df.get(col, 2000), errors="coerce").fillna(2000).astype(int)
-    df["Zip"] = pd.to_numeric(df.get("Zip", -1), errors="coerce").fillna(-1)
-    df["MCC"] = pd.to_numeric(df.get("MCC", 0), errors="coerce").fillna(0).astype(int)
+        df[col] = pd.to_numeric(_series(df, col, 2000), errors="coerce").fillna(2000).astype(int)
+    df["Zip"] = pd.to_numeric(_series(df, "Zip", -1), errors="coerce").fillna(-1)
+    df["MCC"] = pd.to_numeric(_series(df, "MCC", 0), errors="coerce").fillna(0).astype(int)
     for col in ["Use Chip", "Merchant State", "Errors?"]:
         if col in df.columns:
             df[col] = df[col].fillna("MISSING").astype(str)

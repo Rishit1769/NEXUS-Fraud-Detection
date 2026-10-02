@@ -364,14 +364,15 @@ export default function IncidentWorkspacePage() {
               )}
 
               {(() => {
-                const deepseek = analysis.providerResults?.deepseek as
+                const ai = (analysis.providerResults?.ai ??
+                  analysis.providerResults?.deepseek) as
                   | { model?: string; status?: string }
                   | undefined;
-                if (!deepseek) return null;
+                if (!ai) return null;
                 return (
                   <p className="muted" style={{ marginTop: 12, fontSize: 12 }}>
-                    AI explanation: {deepseek.model ?? "deepseek"}
-                    {deepseek.status === "unavailable" &&
+                    AI explanation: {ai.model ?? "ai"}
+                    {ai.status === "unavailable" &&
                       " (unavailable — deterministic result used)"}
                   </p>
                 );

@@ -9,15 +9,12 @@ const envSchema = z.object({
     .min(32, "AUTH_SECRET must be at least 32 characters"),
   NEXT_PUBLIC_APP_NAME: z.string().default("NEXUS Fraud Detection"),
   /** AI explanation provider (OpenAI-compatible chat/completions).
-   *  Admin can override at runtime via SystemSetting; env is the default. */
-  AI_PROVIDER: z.string().default("deepseek"),
+   *  Defaults to OpenCode's Go gateway; admin can override at runtime via
+   *  SystemSetting, env is the fallback. */
+  AI_PROVIDER: z.string().default("opencode"),
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: z.string().url().optional(),
-  AI_MODEL: z.string().default("deepseek-chat"),
-  /** Legacy DeepSeek names (fallback if AI_* unset). */
-  DEEPSEEK_API_KEY: z.string().optional(),
-  DEEPSEEK_BASE_URL: z.string().url().optional(),
-  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
+  AI_MODEL: z.string().default("deepseek-v4.1-flash"),
   /** Optional Redis URL for distributed rate limits and job locks. */
   REDIS_URL: z.string().optional(),
   /** Optional internal FastAPI XGBoost prediction service. */
@@ -34,9 +31,6 @@ export const env = envSchema.parse({
   AI_API_KEY: process.env.AI_API_KEY,
   AI_BASE_URL: process.env.AI_BASE_URL,
   AI_MODEL: process.env.AI_MODEL,
-  DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
-  DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL,
-  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL,
   REDIS_URL: process.env.REDIS_URL,
   MODEL_API_URL: process.env.MODEL_API_URL,
   MODEL_API_SECRET: process.env.MODEL_API_SECRET,

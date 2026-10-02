@@ -2,9 +2,10 @@ import { AnalysisStatus, Prisma, TransactionCheck } from "@prisma/client";
 import { env } from "@/lib/env";
 import { getAiConfig } from "@/lib/ai-provider";
 import { prisma } from "@/lib/prisma";
-import { explainWithDeepSeek } from "@/lib/deepseek";
+import { explainWithAi } from "@/lib/ai-explain";
 import { predictTransaction } from "@/lib/model-api";
 import { analyzeTransaction } from "./rules";
+import { scoreToRiskLevel } from "../rules";
 import { maybeEscalate } from "../escalation";
 
 export interface TransactionPipelineOptions {
@@ -14,6 +15,15 @@ export interface TransactionPipelineOptions {
 
 function riskRank(level: string): number {
   return { UNKNOWN: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 }[level] ?? 0;
+}
+
+function combineFinalDecision(input: {
+  deterministicScore: number;
+  model?: { probability: number } | null;
+}): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
+  const modelScore = input.model ? Math.round(input.model.probability * 100) : 0;
+  const score = Math.max(input.deterministicScore, modelScore);
+  return { score, riskLevel: scoreToRiskLevel(score) };
 }
 
 function txnSummaryInput(check: {
@@ -33,10 +43,9 @@ function txnSummaryInput(check: {
 /**
  * Layered analysis for a transaction check:
  * 1. deterministic txn rules (always)
- * 2. optional XGBoost transaction head (never overrides deterministic score)
- * 3. optional AI explanation (never overrides the score)
- * 4. persistence onto the TransactionCheck row
- * 5. automatic escalation of HIGH/CRITICAL or model-rule disagreement
+ * 2. optional AI explanation
+ * 3. optional XGBoost transaction head
+ * 4. final policy, persistence, and escalation
  *
  * Idempotent per idempotencyKey.
  */
@@ -77,9 +86,29 @@ export async function runTransactionPipeline(
       occurredAt,
     });
 
-    // Optional ML head. Non-fatal; deterministic rules stand alone.
+    // Stage 2: LLM explanation of the deterministic transaction evidence.
+    const aiConfig = await getAiConfig();
+    const ai = aiConfig
+      ? await explainWithAi({
+          text: txnSummaryInput(check),
+          urls: [],
+          deterministic,
+          sessionId: `txn:${check.id}`,
+        })
+      : null;
+
+    // Stage 3: trained transaction model runs after the LLM. Its current
+    // feature schema does not use LLM output, but the structured result is
+    // forwarded for traceability and future retraining.
     const model = await predictTransaction({
       requestId: `txn:${check.id}`,
+      llmAnalysis: ai
+        ? {
+            proposedRiskLevel: ai.proposedRiskLevel,
+            proposedScore: ai.proposedScore,
+            confidence: ai.confidence,
+          }
+        : null,
       transaction: {
         Amount: check.amount,
         Time: `${hour}:${minute}`,
@@ -91,14 +120,10 @@ export async function runTransactionPipeline(
       },
     });
 
-    const aiConfig = await getAiConfig();
-    const ai = aiConfig
-      ? await explainWithDeepSeek({
-          text: txnSummaryInput(check),
-          urls: [],
-          deterministic,
-        })
-      : null;
+    const finalDecision = combineFinalDecision({
+      deterministicScore: deterministic.score,
+      model,
+    });
 
     const providerResults: Record<string, unknown> = {};
     if (model) {
@@ -137,8 +162,8 @@ export async function runTransactionPipeline(
       where: { id: check.id },
       data: {
         status: AnalysisStatus.COMPLETED,
-        riskLevel: deterministic.riskLevel as TransactionCheck["riskLevel"],
-        score: deterministic.score,
+        riskLevel: finalDecision.riskLevel as TransactionCheck["riskLevel"],
+        score: finalDecision.score,
         deterministicScore: deterministic.score,
         confidence:
           ai?.confidence ?? (model?.calibrated ? model.probability : null),
@@ -148,7 +173,7 @@ export async function runTransactionPipeline(
         limitations: (ai?.limitations ?? []) as unknown as Prisma.InputJsonValue,
         providerResults: providerResults as unknown as Prisma.InputJsonValue,
         modelVersion:
-          ai?.modelVersion ?? model?.modelVersion ?? deterministic.modelVersion,
+          model?.modelVersion ?? ai?.modelVersion ?? deterministic.modelVersion,
         ruleVersion: deterministic.ruleVersion,
         completedAt: new Date(),
       },
@@ -157,15 +182,15 @@ export async function runTransactionPipeline(
     await maybeEscalate({
       transactionCheckId: check.id,
       userId: check.userId,
-      riskLevel: deterministic.riskLevel,
+      riskLevel: finalDecision.riskLevel,
       reason:
-        deterministic.riskLevel === "HIGH" || deterministic.riskLevel === "CRITICAL"
+        finalDecision.riskLevel === "HIGH" || finalDecision.riskLevel === "CRITICAL"
           ? "Automatically escalated based on transaction risk."
           : undefined,
       autoReason: ai?.disagreement
         ? `Model-rule disagreement: AI suggested ${ai.proposedRiskLevel} (${ai.proposedScore}/100) while rules scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
-        : model && riskRank(model.riskLevel) >= 3 && riskRank(model.riskLevel) > riskRank(deterministic.riskLevel)
-          ? `XGBoost disagreement: model predicted ${model.riskLevel} (${Math.round(model.probability * 100)}%) while deterministic rules scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
+        : model && riskRank(model.riskLevel) > riskRank(deterministic.riskLevel)
+          ? `XGBoost raised the result: model predicted ${model.riskLevel} (${Math.round(model.probability * 100)}%) while deterministic rules scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
           : undefined,
     });
 

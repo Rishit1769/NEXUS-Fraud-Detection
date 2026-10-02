@@ -4,9 +4,9 @@ This document defines how NEXUS should collect data, create features, train XGBo
 
 ## 1. Current Boundary
 
-The current application already performs deterministic fraud analysis and can optionally use DeepSeek for explanation. XGBoost is the next machine-learning phase. It must be trained, evaluated, calibrated, versioned, and tested in shadow mode before it changes production decisions.
+The current application already performs deterministic fraud analysis and can optionally use AI provider for explanation. XGBoost is the next machine-learning phase. It must be trained, evaluated, calibrated, versioned, and tested in shadow mode before it changes production decisions.
 
-DeepSeek is not the fraud classifier. It explains structured evidence and drafts a safe response. It must not be the source of a numeric risk score.
+AI provider is not the fraud classifier. It explains structured evidence and drafts a safe response. It must not be the source of a numeric risk score.
 
 ## 2. Recommended Model Suite
 
@@ -307,7 +307,7 @@ predictionStatus, inferenceLatencyMs, modelFailureCode
 explanationVersion
 ```
 
-The final score is a documented policy combination of deterministic evidence, calibrated probability, URL intelligence, and hard safety rules. DeepSeek receives that structured result and writes a safe explanation. It must not overwrite the numeric output. n8n persists the explanation and bot reply through `/api/n8n/analysis-result`.
+The final score is a documented policy combination of deterministic evidence, calibrated probability, URL intelligence, and hard safety rules. AI provider receives that structured result and writes a safe explanation. It must not overwrite the numeric output. n8n persists the explanation and bot reply through `/api/n8n/analysis-result`.
 
 ## 13. Training Lifecycle
 
@@ -324,7 +324,7 @@ The final score is a documented policy combination of deterministic evidence, ca
 
 ## 14. Monitoring and Rollback
 
-Monitor prediction distributions, HIGH/CRITICAL percentage, officer feedback, calibration drift, new-domain and new-template rates, missing features, enrichment failures, latency, service failures, DeepSeek disagreement, queue volume, and time to review.
+Monitor prediction distributions, HIGH/CRITICAL percentage, officer feedback, calibration drift, new-domain and new-template rates, missing features, enrichment failures, latency, service failures, AI provider disagreement, queue volume, and time to review.
 
 Rollback on severe false negatives, unexpected score shifts, feature incompatibility, unacceptable latency, or corrupted explanations. Rollback selects the previous approved artifact; it does not delete the new one.
 
@@ -341,7 +341,7 @@ Rollback on severe false negatives, unexpected score shifts, feature incompatibi
 - Artifacts have manifests and approval status.
 - Shadow inference does not block deterministic analysis.
 - NEXUS stores model, feature, and rule versions.
-- DeepSeek explains but does not override the score.
+- AI provider explains but does not override the score.
 - Officers can review disagreement cases.
 - Monitoring and rollback have been tested.
 
@@ -349,4 +349,4 @@ Rollback on severe false negatives, unexpected score shifts, feature incompatibi
 
 - `docs/dream-build.md` - product, architecture, operations, and delivery plan.
 - `docs/model_information.md` - model responsibilities, feature catalog, and inference design.
-- `docs/n8n/README.md` - WhatsApp automation and DeepSeek workflow.
+- `docs/n8n/README.md` - WhatsApp automation and AI provider workflow.

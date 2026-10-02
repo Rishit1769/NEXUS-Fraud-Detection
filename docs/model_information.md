@@ -11,15 +11,15 @@ Deterministic rules -> hard safety signals and policy constraints
 XGBoost models      -> calibrated probability and classification
 SHAP                -> local model contribution evidence
 Threat intelligence -> external reputation and domain observations
-DeepSeek            -> plain-language explanation and safe reply
+AI provider            -> plain-language explanation and safe reply
 Officer             -> final decision for serious or uncertain cases
 ```
 
-DeepSeek must never be treated as the numeric fraud classifier or allowed to override a critical deterministic rule.
+AI provider must never be treated as the numeric fraud classifier or allowed to override a critical deterministic rule.
 
 ## 2. Current Implementation Boundary
 
-The current NEXUS application already has a deterministic analysis pipeline, stored analysis results, URL extraction, user conversations, WhatsApp/n8n ingestion, DeepSeek explanation integration, officer incidents, notifications, and audit records.
+The current NEXUS application already has a deterministic analysis pipeline, stored analysis results, URL extraction, user conversations, WhatsApp/n8n ingestion, AI provider explanation integration, officer incidents, notifications, and audit records.
 
 The XGBoost models described below are the planned ML layer. They are not production-ready merely because a dataset has been downloaded. A model becomes production-ready only after training, grouped/time-aware testing, calibration, explainability checks, artifact registration, shadow deployment, and officer review.
 
@@ -214,7 +214,7 @@ Store model contributions separately from rule evidence:
 }
 ```
 
-SHAP shows model contribution; it is not proof of fraud. DeepSeek should receive structured evidence, score, limitations, and safe policy instructions. It must not invent URLs, provider results, or facts.
+SHAP shows model contribution; it is not proof of fraud. AI provider should receive structured evidence, score, limitations, and safe policy instructions. It must not invent URLs, provider results, or facts.
 
 ## 10. Model Registry
 
@@ -294,4 +294,4 @@ Persist `rawProbability`, `calibratedProbability`, `deterministicScore`, `modelV
 
 - `docs/dream-build.md` - product, architecture, operations, and delivery plan.
 - `docs/model_training.md` - practical dataset, feature, training, and evaluation runbook.
-- `docs/n8n/README.md` - WhatsApp automation and DeepSeek workflow.
+- `docs/n8n/README.md` - WhatsApp automation and AI provider workflow.

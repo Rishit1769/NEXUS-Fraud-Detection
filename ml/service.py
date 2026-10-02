@@ -29,6 +29,10 @@ class PredictRequest(BaseModel):
     text: str = Field(default="", max_length=100_000)
     urls: list[str] = Field(default_factory=list, max_length=20)
     urlFeatures: list[dict[str, float]] | None = None
+    # Advisory context from the preceding LLM stage. Existing trained models
+    # do not consume this as a feature; it is accepted for workflow ordering
+    # and future models retrained with this input contract.
+    llmAnalysis: dict[str, Any] | None = None
     transaction: dict[str, Any] | None = None
 
 

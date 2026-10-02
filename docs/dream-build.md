@@ -11,12 +11,12 @@ User or WhatsApp sender
         -> conversation and evidence store
         -> feature extraction and deterministic rules
         -> XGBoost models and threat intelligence
-        -> SHAP evidence and DeepSeek explanation
+        -> SHAP evidence and AI provider explanation
         -> safe user response and officer escalation
         -> officer investigation and audited decision
 ```
 
-The officer remains the final authority for serious or ambiguous cases. DeepSeek explains structured evidence and drafts a safe response; it must never invent facts or silently override the numeric policy result.
+The officer remains the final authority for serious or ambiguous cases. AI provider explains structured evidence and drafts a safe response; it must never invent facts or silently override the numeric policy result.
 
 ## 2. Current Repository Reality
 
@@ -31,12 +31,12 @@ The repository currently contains the following foundation:
 - Suspicious text, link, email, and WhatsApp submission flow.
 - URL extraction and persisted analysis results.
 - Deterministic signal extraction and versioned rules for urgency, OTP requests, credentials, payments, impersonation, prizes, secrecy, channel switching, suspicious hosts, punycode, and IP hosts.
-- Optional DeepSeek explanation through n8n or the direct analysis pipeline.
+- Optional AI provider explanation through n8n or the direct analysis pipeline.
 - Report-to-officer escalation with duplicate protection.
 - Officer login, incident queue, detail view, notes, assignments, status changes, and notifications.
 - Admin overview, officer directory, and audit-log browser.
 - Redis rate-limit hook with an in-memory fallback.
-- Importable n8n workflow for Meta WhatsApp input, NEXUS ingest, DeepSeek explanation, persistence, and reply.
+- Importable n8n workflow for Meta WhatsApp input, NEXUS ingest, AI provider explanation, persistence, and reply.
 
 The important boundary is that the live fraud score is currently primarily deterministic. The XGBoost training program in `model_training.md` is the next ML phase and must not be described as live until trained artifacts are evaluated, registered, and verified in shadow mode.
 
@@ -64,7 +64,7 @@ Meta webhook
   -> normalize Meta payload
   -> POST /api/n8n/whatsapp
   -> create/link conversation and run NEXUS analysis
-  -> DeepSeek explanation in n8n
+  -> AI provider explanation in n8n
   -> POST /api/n8n/analysis-result
   -> send approved reply through WhatsApp Cloud
 ```
@@ -109,7 +109,7 @@ Admins manage officers, revoke sessions, inspect system health, review audit log
 4. **XGBoost models:** produce calibrated probabilities for message fraud, URL risk, fraud category, and later officer priority.
 5. **Threat intelligence:** enrich with timestamped reputation, DNS/TLS, domain-age, redirect, PhishTank, and benign-domain observations.
 6. **Explainability:** expose model contributions and deterministic rules as separate evidence types.
-7. **DeepSeek:** produce a user-safe summary, limitations, next steps, and draft reply from structured evidence.
+7. **AI provider:** produce a user-safe summary, limitations, next steps, and draft reply from structured evidence.
 8. **Human escalation:** route HIGH/CRITICAL results, disagreement, repeated reports, and uncertain high-impact cases to officers.
 
 ## 5. Data and Security
@@ -131,7 +131,7 @@ Security requirements:
 - Enforce officer authorization server-side.
 - Audit sensitive mutations.
 - Use bounded retries with exponential backoff.
-- Keep a deterministic result and safe fallback when DeepSeek or enrichment is unavailable.
+- Keep a deterministic result and safe fallback when AI provider or enrichment is unavailable.
 
 ## 6. Deployment
 
@@ -155,7 +155,7 @@ Production steps:
 5. Provision an admin officer securely.
 6. Import and configure the n8n workflow.
 7. Configure Meta WhatsApp Business Platform and subscribe to `messages`.
-8. Test Meta -> n8n -> NEXUS -> DeepSeek -> WhatsApp end to end.
+8. Test Meta -> n8n -> NEXUS -> AI provider -> WhatsApp end to end.
 9. Confirm the linked sender sees the same conversation in the portal.
 10. Monitor logs, failed jobs, notifications, and audit records.
 
@@ -196,7 +196,7 @@ Fresh threat feeds, drift monitoring, officer feedback labels, active learning, 
 - High-risk cases enter the officer queue automatically.
 - Officers can investigate, assign, add notes, resolve, and audit cases.
 - Models are evaluated on time-separated and campaign-separated data.
-- DeepSeek failure never blocks deterministic analysis.
+- AI provider failure never blocks deterministic analysis.
 - Secrets are absent from source control and logs.
 - Build, tests, migrations, health checks, and rollback procedures are verified.
 

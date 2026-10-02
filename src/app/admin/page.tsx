@@ -45,7 +45,7 @@ export default function AdminPage() {
   const [officers, setOfficers] = useState<OfficerRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
-  const [aiForm, setAiForm] = useState({ provider: "deepseek", baseUrl: "", model: "", apiKey: "" });
+  const [aiForm, setAiForm] = useState({ provider: "opencode", baseUrl: "", model: "", apiKey: "" });
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 
@@ -185,7 +185,7 @@ export default function AdminPage() {
                 value={aiForm.provider}
                 onChange={(e) => setAiForm((f) => ({ ...f, provider: e.target.value }))}
               >
-                <option value="deepseek">DeepSeek</option>
+                <option value="opencode">OpenCode</option>
                 <option value="openai">OpenAI</option>
                 <option value="openrouter">OpenRouter</option>
                 <option value="custom">Custom endpoint</option>
@@ -197,7 +197,7 @@ export default function AdminPage() {
                 id="ai-base"
                 value={aiForm.baseUrl}
                 onChange={(e) => setAiForm((f) => ({ ...f, baseUrl: e.target.value }))}
-                placeholder="https://api.deepseek.com"
+                placeholder="https://opencode.ai/zen/go/v1"
               />
             </div>
             <div className="field" style={{ flex: "1 1 160px" }}>
@@ -206,7 +206,7 @@ export default function AdminPage() {
                 id="ai-model"
                 value={aiForm.model}
                 onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
-                placeholder="deepseek-chat"
+                placeholder="deepseek-v4.1-flash"
               />
             </div>
           </div>

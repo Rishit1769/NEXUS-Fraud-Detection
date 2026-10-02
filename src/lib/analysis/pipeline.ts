@@ -3,9 +3,10 @@ import { env } from "@/lib/env";
 import { getAiConfig } from "@/lib/ai-provider";
 import { prisma } from "@/lib/prisma";
 import { extractUrls } from "@/lib/url-extraction";
-import { explainWithDeepSeek } from "@/lib/deepseek";
+import { explainWithAi } from "@/lib/ai-explain";
 import { predictWithModel } from "@/lib/model-api";
 import { analyzeMessage } from "./engine";
+import { scoreToRiskLevel } from "./rules";
 import { maybeEscalate } from "./escalation";
 import type { ProviderUrlCheck } from "./types";
 
@@ -33,9 +34,24 @@ function riskRank(level: string): number {
 }
 
 /**
+ * Final policy stage. Deterministic rules are the safety floor: the trained
+ * model may raise the result, but can never lower a hard rule result. The LLM
+ * remains advisory and is persisted separately because its score is not
+ * calibrated for production risk decisions.
+ */
+function combineFinalDecision(input: {
+  deterministicScore: number;
+  model?: { probability: number } | null;
+}): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
+  const modelScore = input.model ? Math.round(input.model.probability * 100) : 0;
+  const score = Math.max(input.deterministicScore, modelScore);
+  return { score, riskLevel: scoreToRiskLevel(score) };
+}
+
+/**
  * Runs the layered analysis pipeline for a conversation:
  * 1. deterministic signals + rules (always)
- * 2. optional DeepSeek explanation (never allowed to override the score)
+ * 2. optional AI explanation (never allowed to override the score)
  * 3. persistence of the result, indicators, and URL checks
  * 4. automatic escalation of HIGH/CRITICAL or model-rule disagreement
  *
@@ -100,25 +116,41 @@ export async function runAnalysisPipeline(
       providerChecks: opts.providerChecks,
     });
 
-    // The model API is optional and non-fatal. Deterministic rules remain the
-    // source of the stored score and can always complete the analysis alone.
+    // Stage 2: optional LLM analysis. It explains the deterministic evidence
+    // and produces an advisory suggestion before the trained model runs.
+    const aiConfig = await getAiConfig();
+    const ai = aiConfig
+      ? await explainWithAi({
+          text: message.content,
+          urls,
+          deterministic,
+          sessionId: opts.conversationId,
+        })
+      : null;
+
+    // Stage 3: optional trained model. The current XGBoost artifacts were
+    // trained on message/URL features, so the LLM result is passed as
+    // structured context for traceability but is not treated as a model
+    // feature until a model is explicitly retrained for that schema.
     const model = await predictWithModel({
       requestId: job.id,
       text: message.content,
       urls,
+      llmAnalysis: ai
+        ? {
+            proposedRiskLevel: ai.proposedRiskLevel,
+            proposedScore: ai.proposedScore,
+            confidence: ai.confidence,
+          }
+        : null,
     });
 
-    // Optional AI explanation. Time-boxed and non-fatal: the deterministic
-    // result stands on its own when the provider is unavailable or misbehaves.
-    // The provider/model is admin-swappable (SystemSetting) with env default.
-    const aiConfig = await getAiConfig();
-    const ai = aiConfig
-      ? await explainWithDeepSeek({
-          text: message.content,
-          urls,
-          deterministic,
-        })
-      : null;
+    // Stage 4: final policy. Deterministic rules remain the safety floor;
+    // XGBoost may raise the score. LLM output is advisory only.
+    const finalDecision = combineFinalDecision({
+      deterministicScore: deterministic.score,
+      model: model?.message,
+    });
 
     const providerResults: Record<string, unknown> = {};
     if (opts.workflowId || opts.executionId) {
@@ -140,7 +172,7 @@ export async function runAnalysisPipeline(
       };
     }
     if (ai) {
-      providerResults.deepseek = {
+      providerResults.ai = {
         status: "ok",
         model: ai.modelVersion,
         aiSuggestion: {
@@ -151,7 +183,7 @@ export async function runAnalysisPipeline(
         disagreement: ai.disagreement,
       };
     } else if (aiConfig) {
-      providerResults.deepseek = {
+      providerResults.ai = {
         status: "unavailable",
         note: "AI explanation was not produced; deterministic result used.",
       };
@@ -159,7 +191,7 @@ export async function runAnalysisPipeline(
 
     const summary =
       ai?.summary ??
-      fallbackSummary(deterministic.score, deterministic.riskLevel, deterministic.evidence);
+      fallbackSummary(finalDecision.score, finalDecision.riskLevel, deterministic.evidence);
 
     const result = await prisma.$transaction(async (tx) => {
       const created = await tx.analysisResult.create({
@@ -167,8 +199,8 @@ export async function runAnalysisPipeline(
           conversation: { connect: { id: opts.conversationId } },
           job: { connect: { id: job.id } },
           status: AnalysisStatus.COMPLETED,
-          riskLevel: deterministic.riskLevel as AnalysisResult["riskLevel"],
-          score: deterministic.score,
+          riskLevel: finalDecision.riskLevel as AnalysisResult["riskLevel"],
+          score: finalDecision.score,
           deterministicScore: deterministic.score,
           confidence:
             ai?.confidence ??
@@ -179,7 +211,7 @@ export async function runAnalysisPipeline(
           limitations: (ai?.limitations ?? []) as unknown as Prisma.InputJsonValue,
           providerResults: providerResults as unknown as Prisma.InputJsonValue,
           modelVersion:
-            ai?.modelVersion ?? model?.message?.modelVersion ?? deterministic.modelVersion,
+            model?.message?.modelVersion ?? ai?.modelVersion ?? deterministic.modelVersion,
           ruleVersion: deterministic.ruleVersion,
           completedAt: new Date(),
           indicators: {
@@ -216,15 +248,15 @@ export async function runAnalysisPipeline(
     // material model-rule disagreement.
     await maybeEscalate({
       conversationId: opts.conversationId,
-      riskLevel: deterministic.riskLevel,
+      riskLevel: finalDecision.riskLevel,
       reason:
-        deterministic.riskLevel === "HIGH" || deterministic.riskLevel === "CRITICAL"
+        finalDecision.riskLevel === "HIGH" || finalDecision.riskLevel === "CRITICAL"
           ? "Automatically escalated based on risk level."
           : undefined,
       autoReason: ai?.disagreement
-        ? `Model-rule disagreement: DeepSeek suggested ${ai.proposedRiskLevel} (${ai.proposedScore}/100) while the rule engine scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
-        : model?.message && riskRank(model.message.riskLevel) >= 3 && riskRank(model.message.riskLevel) > riskRank(deterministic.riskLevel)
-          ? `XGBoost disagreement: model predicted ${model.message.riskLevel} (${Math.round(model.message.probability * 100)}%) while deterministic rules scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
+        ? `Model-rule disagreement: AI suggested ${ai.proposedRiskLevel} (${ai.proposedScore}/100) while the rule engine scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
+        : model?.message && riskRank(model.message.riskLevel) > riskRank(deterministic.riskLevel)
+          ? `XGBoost raised the result: model predicted ${model.message.riskLevel} (${Math.round(model.message.probability * 100)}%) while deterministic rules scored ${deterministic.score}/100 (${deterministic.riskLevel}).`
           : undefined,
     });
 

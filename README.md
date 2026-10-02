@@ -3,7 +3,7 @@
 Explainable AI-based phishing and digital-fraud safety platform. A person can
 submit a suspicious message, link, email, or WhatsApp conversation. NEXUS
 preserves the conversation, extracts indicators, evaluates fraud risk with a
-deterministic rule engine (optionally explained by DeepSeek), explains the
+deterministic rule engine (optionally explained by an AI provider), explains the
 evidence, gives safe next steps, and lets the user escalate the case to an
 authorized officer who investigates it in a dedicated portal.
 
@@ -25,7 +25,7 @@ authorized officer who investigates it in a dedicated portal.
   secrecy pressure, punctuation/caps)
 - Layer 3: versioned rule engine — clamped 0-100 score → LOW/MEDIUM/HIGH/CRITICAL,
   provider-backed reputation rules, brand/host mismatch, punycode/lookalike/IP hosts
-- Layer 4: optional DeepSeek explanation — explains and recommends review but
+- Layer 4: optional AI explanation (OpenCode Go gateway) — explains and recommends review but
   never overrides the deterministic score; material model-rule disagreement escalates
 - Layer 5: automatic escalation of HIGH/CRITICAL cases into the officer queue
 - Idempotent analysis jobs keyed by provider message ID
@@ -34,7 +34,7 @@ authorized officer who investigates it in a dedicated portal.
 - `POST /api/n8n/whatsapp` ingest — shared-secret + optional HMAC auth, replay
   protection, dedupe by Meta message ID, phone-based user linking, non-text
   fallback replies
-- `POST /api/n8n/analysis-result` — DeepSeek explanation + approved BOT reply
+- `POST /api/n8n/analysis-result` — AI explanation + approved BOT reply
 - `POST /api/n8n/officer-notification` — workflow-failure alerts to officers
 - Importable workflow: `docs/n8n/nexus-fraud-whatsapp-ai.json`
 
@@ -83,8 +83,8 @@ NEXT_PUBLIC_APP_NAME
 WHATSAPP_INGEST_SECRET        # shared secret for POST /api/n8n/*
 ```
 
-Optional: `DEEPSEEK_API_KEY` (lets the pipeline explain results directly),
-`DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `REDIS_URL`.
+Optional: `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` (OpenCode gateway; lets the
+pipeline explain results directly), `REDIS_URL`.
 
 ### XGBoost model API
 
@@ -191,7 +191,7 @@ routing to `http://127.0.0.1:3002`.
 - Verified user can register, log in, and submit suspicious content.
 - WhatsApp messages flow Meta → n8n → NEXUS without provider secrets in NEXUS.
 - The same conversation is visible in the portal when the phone is linked.
-- Deterministic rules (and DeepSeek when configured) produce a numeric score,
+- Deterministic rules (and the AI provider when configured) produce a numeric score,
   risk level, evidence, confidence, and limitations — all persisted.
 - HIGH/CRITICAL cases enter the officer queue automatically.
 - Officers can authenticate, investigate, add notes, assign, and resolve cases.

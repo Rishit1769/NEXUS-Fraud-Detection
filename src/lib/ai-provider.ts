@@ -8,9 +8,14 @@ export interface AiConfig {
   model: string;
 }
 
+const DEFAULT_PROVIDER = "opencode";
+const DEFAULT_MODEL = "deepseek-v4.1-flash";
+
 const DEFAULT_BASE_URLS: Record<string, string> = {
-  deepseek: "https://api.deepseek.com",
+  opencode: "https://opencode.ai/zen/go/v1",
+  zen: "https://opencode.ai/zen/v1",
   openai: "https://api.openai.com/v1",
+  openrouter: "https://openrouter.ai/api/v1",
 };
 
 /** Admin-managed AI explanation provider. DB SystemSetting wins, env is the default. */
@@ -26,16 +31,14 @@ export async function getAiConfig(): Promise<AiConfig | null> {
   }
   const get = (key: string) => settings.find((s) => s.key === key)?.value || undefined;
 
-  const provider = get("ai.provider") ?? env.AI_PROVIDER ?? "deepseek";
-  const apiKey =
-    get("ai.api_key") ?? env.AI_API_KEY ?? env.DEEPSEEK_API_KEY ?? undefined;
+  const provider = get("ai.provider") ?? env.AI_PROVIDER ?? DEFAULT_PROVIDER;
+  const apiKey = get("ai.api_key") ?? env.AI_API_KEY ?? undefined;
   const baseUrl =
     get("ai.base_url") ??
     env.AI_BASE_URL ??
-    env.DEEPSEEK_BASE_URL ??
     DEFAULT_BASE_URLS[provider] ??
-    DEFAULT_BASE_URLS.deepseek;
-  const model = get("ai.model") ?? env.AI_MODEL ?? env.DEEPSEEK_MODEL;
+    DEFAULT_BASE_URLS[DEFAULT_PROVIDER];
+  const model = get("ai.model") ?? env.AI_MODEL ?? DEFAULT_MODEL;
 
   if (!apiKey) return null;
   return { provider, apiKey, baseUrl, model };
@@ -58,17 +61,16 @@ export async function getAiSettingsForAdmin(): Promise<{
     // DB unavailable — env only.
   }
   const get = (key: string) => settings.find((s) => s.key === key)?.value || undefined;
-  const provider = get("ai.provider") ?? env.AI_PROVIDER ?? "deepseek";
-  const hasKey = !!(get("ai.api_key") ?? env.AI_API_KEY ?? env.DEEPSEEK_API_KEY);
+  const provider = get("ai.provider") ?? env.AI_PROVIDER ?? DEFAULT_PROVIDER;
+  const hasKey = !!(get("ai.api_key") ?? env.AI_API_KEY);
   return {
     provider,
     baseUrl:
       get("ai.base_url") ??
       env.AI_BASE_URL ??
-      env.DEEPSEEK_BASE_URL ??
       DEFAULT_BASE_URLS[provider] ??
-      DEFAULT_BASE_URLS.deepseek,
-    model: get("ai.model") ?? env.AI_MODEL ?? env.DEEPSEEK_MODEL,
+      DEFAULT_BASE_URLS[DEFAULT_PROVIDER],
+    model: get("ai.model") ?? env.AI_MODEL ?? DEFAULT_MODEL,
     apiKeyConfigured: hasKey,
   };
 }
@@ -78,9 +80,9 @@ export async function saveAiSettings(
   input: { provider: string; baseUrl?: string; model?: string; apiKey?: string },
   updatedBy?: string | null
 ): Promise<void> {
-  const provider = input.provider.trim().slice(0, 64) || "deepseek";
-  const baseUrl = (input.baseUrl?.trim() || DEFAULT_BASE_URLS[provider] || DEFAULT_BASE_URLS.deepseek).slice(0, 512);
-  const model = (input.model?.trim() || "deepseek-chat").slice(0, 128);
+  const provider = input.provider.trim().slice(0, 64) || DEFAULT_PROVIDER;
+  const baseUrl = (input.baseUrl?.trim() || DEFAULT_BASE_URLS[provider] || DEFAULT_BASE_URLS[DEFAULT_PROVIDER]).slice(0, 512);
+  const model = (input.model?.trim() || DEFAULT_MODEL).slice(0, 128);
   await prisma.$transaction([
     prisma.systemSetting.upsert({
       where: { key: "ai.provider" },
