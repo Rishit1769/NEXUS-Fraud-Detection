@@ -22,16 +22,21 @@ def load_config(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def train(task: str, config_path: Path) -> Path:
+def train(task: str, config_path: Path, llm_features_path: Path | None = None) -> Path:
     config = load_config(config_path)
     root = config_path.parent.parent.resolve()
+    if llm_features_path and not llm_features_path.is_absolute():
+        llm_features_path = (Path.cwd() / llm_features_path).resolve()
     data_config = config["data"]
     if task == "url":
-        features, labels, groups = load_url_data(root / data_config["url_dataset"])
+        features, labels, groups = load_url_data(
+            root / data_config["url_dataset"], llm_features_path
+        )
     else:
         features, labels, groups = load_message_data(
             root / data_config["message_dataset"],
             root / data_config["sms_collection"],
+            llm_features_path,
         )
 
     indices = grouped_stratified_indices(labels.to_numpy(), groups.to_numpy(), config["seed"])
@@ -70,7 +75,7 @@ def train(task: str, config_path: Path) -> Path:
     }
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (output / "feature_manifest.json").write_text(
-        json.dumps({"feature_version": f"{task}-features-1", "columns": list(features.columns), "dtypes": {name: str(value) for name, value in features.dtypes.items()}}, indent=2),
+        json.dumps({"feature_version": f"{task}-features-2", "llm_feature_version": "llm-features-1" if llm_features_path else None, "columns": list(features.columns), "dtypes": {name: str(value) for name, value in features.dtypes.items()}}, indent=2),
         encoding="utf-8",
     )
     (output / "feature_defaults.json").write_text(
@@ -93,8 +98,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train a NEXUS phishing model")
     parser.add_argument("--task", choices=["url", "message"], required=True)
     parser.add_argument("--config", type=Path, default=Path("ml/config.yaml"))
+    parser.add_argument(
+        "--llm-features",
+        type=Path,
+        help="JSONL cache produced by enrich_llm_features.py; required for LLM-aware retraining",
+    )
     args = parser.parse_args()
-    train(args.task, args.config)
+    train(args.task, args.config, args.llm_features)
 
 
 if __name__ == "__main__":

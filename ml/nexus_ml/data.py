@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from .features import message_feature_frame, url_feature_frame, url_lexical_frame
+from .llm_features import cached_llm_frame
 
 # Direction augmentation templates. Training corpora contain ~0 examples of
 # "share your OTP" (attacker asking) vs "your OTP is NNNNNN" (your own
@@ -201,7 +202,7 @@ def _augment_benign_with_paths(frame: pd.DataFrame, seed: int = 42) -> pd.DataFr
     return pd.concat([frame, pd.DataFrame(rows)], ignore_index=True)
 
 
-def load_url_data(path: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def load_url_data(path: Path, llm_features_path: Path | None = None) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     """Served URL head: lexical-only features from the raw URL string.
 
     (The page-level PhiUSIIL numerics via url_feature_frame remain available
@@ -215,6 +216,8 @@ def load_url_data(path: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     frame = _augment_benign_with_paths(frame)
     target = (pd.to_numeric(frame["label"], errors="coerce") == 0).astype(int)
     features = url_lexical_frame(frame["URL"])
+    if llm_features_path:
+        features = pd.concat([features, cached_llm_frame(frame["URL"], llm_features_path)], axis=1)
     groups = frame.get("Domain", frame["URL"]).fillna("").astype(str).str.lower()
     return features, target, groups
 
@@ -257,7 +260,13 @@ def load_message_texts(
     return texts, labels.reset_index(drop=True), groups.reset_index(drop=True)
 
 
-def load_message_data(dataset_path: Path, sms_path: Path | None = None) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def load_message_data(
+    dataset_path: Path,
+    sms_path: Path | None = None,
+    llm_features_path: Path | None = None,
+) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     texts, labels, groups = load_message_texts(dataset_path, sms_path)
     frames = [pd.DataFrame(message_feature_frame(pd.Series(texts)))]
+    if llm_features_path:
+        frames.append(cached_llm_frame(pd.Series(texts), llm_features_path))
     return pd.concat(frames, ignore_index=True), labels, groups

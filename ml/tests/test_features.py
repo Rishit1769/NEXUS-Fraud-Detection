@@ -13,9 +13,23 @@ from nexus_ml.features import (
     url_feature_frame,
     url_lexical_frame,
 )
+from nexus_ml.llm_features import LLM_FEATURE_NAMES, llm_feature_values
 
 
 class FeatureTests(unittest.TestCase):
+    def test_llm_features_are_fixed_numeric_and_bounded(self):
+        values = llm_feature_values({
+            "proposedRiskLevel": "HIGH",
+            "proposedScore": 87,
+            "confidence": 0.91,
+            "disagreement": True,
+        })
+        self.assertEqual(list(values), LLM_FEATURE_NAMES)
+        self.assertEqual(values["llm_proposed_score"], 87.0)
+        self.assertEqual(values["llm_risk_high"], 1.0)
+        self.assertEqual(values["llm_confidence"], 0.91)
+        self.assertEqual(values["llm_disagreement"], 1.0)
+
     def test_message_features_are_deterministic_and_detect_signals(self):
         text = "URGENT: share your OTP now and pay the fee at https://bit.ly/test"
         first = message_features(text)

@@ -64,6 +64,7 @@ services:
     restart: unless-stopped
     environment:
       MODEL_API_SECRET: "${MODEL_API_SECRET:-}"
+      REQUIRE_LLM_FEATURES: "${REQUIRE_LLM_FEATURES:-true}"
       MODEL_ARTIFACT_ROOT: "/app/ml/artifacts"
     volumes:
       - ./ml/artifacts:/app/ml/artifacts:ro

@@ -26,14 +26,17 @@ from xgboost import XGBClassifier
 from nexus_ml.data import load_message_texts
 from nexus_ml.evaluation import evaluate_binary, threshold_for_high_recall
 from nexus_ml.features import MESSAGE_FEATURE_NAMES
+from nexus_ml.llm_features import LLM_FEATURE_NAMES
 from nexus_ml.message_tfidf import build_vectorizers, feature_names, fit_transform, transform
 from nexus_ml.splitting import grouped_stratified_indices
 
 
-def train(config_path: Path) -> Path:
+def train(config_path: Path, llm_features_path: Path | None = None) -> Path:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     seed: int = int(config.get("seed", 42))
     root = config_path.parent.parent.resolve()
+    if llm_features_path and not llm_features_path.is_absolute():
+        llm_features_path = (Path.cwd() / llm_features_path).resolve()
     data_config = config["data"]
 
     texts, labels, groups = load_message_texts(
@@ -49,9 +52,18 @@ def train(config_path: Path) -> Path:
     series = pd.Series(texts)
     char_vec, word_vec = build_vectorizers()
     # Fit vectorizers on train only (no leakage), transform all splits.
-    x_tr = fit_transform(char_vec, word_vec, series.iloc[train_idx])
-    x_v = transform(char_vec, word_vec, series.iloc[val_idx])
-    x_te = transform(char_vec, word_vec, series.iloc[test_idx])
+    x_tr = fit_transform(char_vec, word_vec, series.iloc[train_idx], llm_features_path)
+    # Validation/test use the same cached LLM features as training.
+    def transform_with_llm(values: pd.Series):
+        matrix = transform(char_vec, word_vec, values)
+        if llm_features_path:
+            from scipy import sparse
+            from nexus_ml.llm_features import cached_llm_frame
+            matrix = sparse.hstack([matrix, sparse.csr_matrix(cached_llm_frame(values, llm_features_path).to_numpy())]).tocsr()
+        return matrix
+
+    x_v = transform_with_llm(series.iloc[val_idx])
+    x_te = transform_with_llm(series.iloc[test_idx])
 
     model = XGBClassifier(
         objective="binary:logistic",
@@ -92,8 +104,9 @@ def train(config_path: Path) -> Path:
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (output / "feature_manifest.json").write_text(
         json.dumps(
-            {"feature_version": "message-tfidf-1",
-             "lexical_columns": MESSAGE_FEATURE_NAMES,
+             {"feature_version": "message-tfidf-2" if llm_features_path else "message-tfidf-1",
+              "lexical_columns": MESSAGE_FEATURE_NAMES,
+             "llm_columns": LLM_FEATURE_NAMES if llm_features_path else [],
              "n_tfidf_features": len(feature_names(char_vec, word_vec)) - len(MESSAGE_FEATURE_NAMES)},
             indent=2,
         ),
@@ -118,8 +131,9 @@ def train(config_path: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train TF-IDF message head")
     parser.add_argument("--config", type=Path, default=Path("ml/config.yaml"))
+    parser.add_argument("--llm-features", type=Path)
     args = parser.parse_args()
-    train(args.config)
+    train(args.config, args.llm_features)
 
 
 if __name__ == "__main__":

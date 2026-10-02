@@ -21,6 +21,31 @@ python ml/train.py --task url --config ml/config.yaml
 python ml/train.py --task message --config ml/config.yaml
 ```
 
+## LLM-aware retraining
+
+The production model can consume a fixed numeric projection of the preceding
+LLM result. Raw LLM prose is never passed to XGBoost. First generate a
+resumable JSONL cache (using the same provider configuration as the app), then
+train an artifact whose feature manifest includes `llm-features-1`:
+
+```powershell
+python ml/enrich_llm_features.py --task message --config ml/config.yaml
+python ml/enrich_llm_features.py --task url --config ml/config.yaml
+python ml/train_message_tfidf.py --config ml/config.yaml --llm-features ml/artifacts/llm-features-message.jsonl
+python ml/train.py --task url --config ml/config.yaml --llm-features ml/artifacts/llm-features-url.jsonl
+```
+
+Enrich the complete training corpus before production retraining. A partial
+cache is useful for experiments but causes missing rows to receive default
+LLM values and must not be treated as a production-quality model.
+
+The features are `llm_proposed_score`, `llm_confidence`, one-hot risk level,
+and `llm_disagreement`. At inference, the application sends the LLM result to
+the model service and the service converts it to the same schema. Older model
+artifacts without these columns continue to work and simply ignore the extra
+context. For local experiments with legacy artifacts only, explicitly set
+`REQUIRE_LLM_FEATURES=false`; production should leave the default enabled.
+
 Artifacts are written to `ml/artifacts/<task>/<version>/` and include the XGBoost model, feature manifest, metrics, split manifest, and training manifest. The output directory is ignored by Git.
 
 ## Data boundaries

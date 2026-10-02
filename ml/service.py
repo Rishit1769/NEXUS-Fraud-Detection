@@ -16,12 +16,16 @@ from nexus_ml.features import (
     url_feature_frame,
     url_lexical_frame,
 )
+from nexus_ml.llm_features import LLM_FEATURE_NAMES, runtime_llm_frame
 from nexus_ml.transaction_features import transaction_feature_frame
 
 
 ROOT = Path(__file__).resolve().parent
 ARTIFACT_ROOT = Path(os.getenv("MODEL_ARTIFACT_ROOT", str(ROOT / "artifacts")))
 API_SECRET = os.getenv("MODEL_API_SECRET", "")
+# Fail closed by default: production must not silently serve legacy artifacts
+# that ignore the LLM-derived inputs.
+REQUIRE_LLM_FEATURES = os.getenv("REQUIRE_LLM_FEATURES", "true").lower() in {"1", "true", "yes"}
 
 
 class PredictRequest(BaseModel):
@@ -87,6 +91,24 @@ def _load_model(task: str) -> tuple[XGBClassifier, dict[str, Any], dict[str, flo
     return model, manifest, defaults, artifact
 
 
+def _artifact_uses_llm_features(task: str) -> bool:
+    candidates = []
+    if task == "message":
+        candidates = sorted((ARTIFACT_ROOT / "message-tfidf").glob("*/feature_manifest.json"))
+    if not candidates:
+        candidates = sorted((ARTIFACT_ROOT / task).glob("*/feature_manifest.json"))
+    artifact = candidates[-1].parent if candidates else None
+    if artifact is None:
+        return False
+    try:
+        manifest = json.loads((artifact / "feature_manifest.json").read_text(encoding="utf-8"))
+        columns = manifest.get("columns", [])
+        llm_columns = manifest.get("llm_columns", [])
+        return any(str(column).startswith("llm_") for column in columns) or bool(llm_columns)
+    except (OSError, json.JSONDecodeError):
+        return False
+
+
 def _risk_level(probability: float) -> str:
     if probability >= 0.95:
         return "CRITICAL"
@@ -97,12 +119,14 @@ def _risk_level(probability: float) -> str:
     return "LOW"
 
 
-def _predict(task: str, frame: pd.DataFrame) -> Prediction | None:
+def _predict(task: str, frame: pd.DataFrame, llm_analysis: dict[str, Any] | None = None) -> Prediction | None:
     loaded = _load_model(task)
     if loaded is None:
         return None
     model, manifest, defaults, artifact = loaded
     columns = list(manifest["columns"])
+    if llm_analysis and any(column in columns for column in LLM_FEATURE_NAMES):
+        frame = pd.concat([frame, runtime_llm_frame(llm_analysis, len(frame))], axis=1)
     for column in columns:
         if column not in frame.columns:
             frame[column] = defaults.get(column, 0.0)
@@ -142,7 +166,7 @@ def _predict(task: str, frame: pd.DataFrame) -> Prediction | None:
     )
 
 
-def _predict_message_tfidf(text: str) -> Prediction | None:
+def _predict_message_tfidf(text: str, llm_analysis: dict[str, Any] | None = None) -> Prediction | None:
     """TF-IDF message head (preferred). Falls back to count head if absent."""
     cands = sorted((ARTIFACT_ROOT / "message-tfidf").glob("*/model.json"))
     if not cands:
@@ -156,9 +180,12 @@ def _predict_message_tfidf(text: str) -> Prediction | None:
         model = XGBClassifier()
         model.load_model(artifact / "model.json")
         vecs = _joblib.load(artifact / "vectorizer.joblib")
-        frame = _tfidf_transform(vecs["char"], vecs["word"], pd.Series([text]))
-        probability = float(model.predict_proba(frame)[0, 1])
         manifest = json.loads((artifact / "feature_manifest.json").read_text(encoding="utf-8"))
+        frame = _tfidf_transform(
+            vecs["char"], vecs["word"], pd.Series([text]),
+            llm_analysis=llm_analysis if manifest.get("llm_columns") else None,
+        )
+        probability = float(model.predict_proba(frame)[0, 1])
         importances = getattr(model, "feature_importances_", [])
         top_features = [
             FeatureContribution(name=f"tfidf-rank-{rank}", value=0.0,
@@ -181,8 +208,19 @@ def _predict_message_tfidf(text: str) -> Prediction | None:
 
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
+    llm_aware = {
+        "message": _artifact_uses_llm_features("message"),
+        "url": _artifact_uses_llm_features("url"),
+        "transaction": _artifact_uses_llm_features("transaction"),
+    }
+    ready = not REQUIRE_LLM_FEATURES or (llm_aware["message"] and llm_aware["url"])
+    if not ready:
+        raise HTTPException(status_code=503, detail={"message": "LLM-aware message and URL artifacts are required", "llmAware": llm_aware})
     return {
         "ok": True,
+        "ready": ready,
+        "requireLlmFeatures": REQUIRE_LLM_FEATURES,
+        "llmAware": llm_aware,
         "service": "nexus-model-api",
         "messageModel": _latest_artifact("message") is not None,
         "messageTfidfModel": bool(sorted((ARTIFACT_ROOT / "message-tfidf").glob("*/model.json"))),
@@ -196,22 +234,24 @@ def predict(payload: PredictRequest, x_model_api_key: str | None = Header(defaul
     _check_secret(x_model_api_key)
     message = None
     if payload.text.strip():
-        message = _predict_message_tfidf(payload.text)
+        message = _predict_message_tfidf(payload.text, payload.llmAnalysis)
         if message is None:
-            message = _predict("message", message_feature_frame(pd.Series([payload.text])))
+            message = _predict(
+                "message", message_feature_frame(pd.Series([payload.text])), payload.llmAnalysis
+            )
 
     url_predictions: list[Prediction] = []
     for url in payload.urls:
         # Lexical head scores raw URLs directly; urlFeatures enrichment is
         # reserved for a future page-level head and is not required.
-        prediction = _predict("url", url_lexical_frame(pd.Series([url])))
+        prediction = _predict("url", url_lexical_frame(pd.Series([url])), payload.llmAnalysis)
         if prediction is not None:
             url_predictions.append(prediction)
 
     transaction_prediction = None
     if payload.transaction:
         txn_frame = transaction_feature_frame(pd.DataFrame([payload.transaction]))
-        transaction_prediction = _predict("transaction", txn_frame)
+        transaction_prediction = _predict("transaction", txn_frame, payload.llmAnalysis)
 
     return PredictResponse(
         requestId=payload.requestId,
