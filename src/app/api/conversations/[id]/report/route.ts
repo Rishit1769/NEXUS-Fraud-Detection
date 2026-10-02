@@ -32,6 +32,11 @@ export async function POST(request: Request, { params }: Params) {
       return jsonError("Conversation not found", 404);
     }
 
+    const authority = await prisma.officer.findUnique({
+      where: { email: "authority@nexus.com" },
+      select: { id: true },
+    });
+
     const report = await prisma.$transaction(async (tx) => {
       // Duplicate-report protection: one open report per conversation.
       const existing = await tx.incidentReport.findFirst({
@@ -51,6 +56,9 @@ export async function POST(request: Request, { params }: Params) {
           conversationId: id,
           userId: session.userId,
           reason: body.reason,
+          assignments: authority
+            ? { create: { officerId: authority.id, assignedBy: "SYSTEM:USER_ESCALATION" } }
+            : undefined,
         },
       });
 

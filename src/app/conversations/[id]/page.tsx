@@ -134,17 +134,20 @@ export default async function ConversationPage({ params }: Props) {
           </div>
 
           <div className="panel panel-pad">
-            <h2>Officer Escalation</h2>
+            <h2>Authority Escalation</h2>
             {openReport ? (
               <p className="muted">
                 This conversation has an open report (status {openReport.status}). An
                 officer is reviewing it — no further action is needed from you.
               </p>
             ) : (
-              <ReportConversationForm
-                conversationId={conversation.id}
-                alreadyReported={conversation.incidentReports.length > 0}
-              />
+              <>
+                <p className="muted">Your report will be assigned to the NEXUS Authority team.</p>
+                <ReportConversationForm
+                  conversationId={conversation.id}
+                  alreadyReported={conversation.incidentReports.length > 0}
+                />
+              </>
             )}
           </div>
         </aside>

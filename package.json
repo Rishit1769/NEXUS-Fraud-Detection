@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "seed:officer": "tsx scripts/seed-officer.ts"
+    "seed:officer": "tsx scripts/seed-officer.ts",
+    "seed:authority": "tsx scripts/seed-authority.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.13.0",

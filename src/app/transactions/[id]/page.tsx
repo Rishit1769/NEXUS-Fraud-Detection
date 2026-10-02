@@ -80,7 +80,8 @@ export default async function TransactionDetailPage({ params }: Params) {
             retryUrl={`/api/transactions/${check.id}/retry`}
           />
           <div className="panel panel-pad">
-            <h2>Escalate to an officer</h2>
+            <h2>Escalate to NEXUS Authority</h2>
+            <p className="muted">Your report will be assigned to the authority investigation queue.</p>
             <ReportTransactionForm transactionId={check.id} alreadyReported={reported} />
           </div>
         </div>

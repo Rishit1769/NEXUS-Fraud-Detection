@@ -41,8 +41,28 @@ export async function maybeEscalate(params: {
   });
 
   if (existing) {
+    const authority = await prisma.officer.findUnique({
+      where: { email: "authority@nexus.com" },
+      select: { id: true },
+    });
+    if (authority) {
+      await prisma.incidentAssignment.upsert({
+        where: { incidentReportId: existing.id },
+        update: { officerId: authority.id },
+        create: {
+          incidentReportId: existing.id,
+          officerId: authority.id,
+          assignedBy: "SYSTEM:AUTHORITY_ROUTING",
+        },
+      });
+    }
     return existing;
   }
+
+  const authority = await prisma.officer.findUnique({
+    where: { email: "authority@nexus.com" },
+    select: { id: true },
+  });
 
   return prisma.incidentReport.create({
     data: {
@@ -54,6 +74,9 @@ export async function maybeEscalate(params: {
         "Automatically escalated based on risk analysis.",
       origin: IncidentOrigin.AUTO,
       autoReason: params.autoReason ?? null,
+      assignments: authority
+        ? { create: { officerId: authority.id, assignedBy: "SYSTEM:AUTHORITY_ROUTING" } }
+        : undefined,
     },
     select: { id: true },
   });

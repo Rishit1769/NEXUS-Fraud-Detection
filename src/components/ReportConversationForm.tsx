@@ -57,7 +57,7 @@ export function ReportConversationForm({
       {error ? <p className="error">{error}</p> : null}
       <button className="button danger" type="submit" disabled={loading}>
         <ShieldAlert size={16} aria-hidden="true" />
-        {loading ? "Reporting..." : "Report To Officer"}
+        {loading ? "Escalating..." : "Escalate to NEXUS Authority"}
       </button>
     </form>
   );

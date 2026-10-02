@@ -30,6 +30,11 @@ export async function POST(request: Request, { params }: Params) {
       return jsonError("Transaction check not found", 404);
     }
 
+    const authority = await prisma.officer.findUnique({
+      where: { email: "authority@nexus.com" },
+      select: { id: true },
+    });
+
     const existing = await prisma.incidentReport.findFirst({
       where: {
         transactionCheckId: id,
@@ -46,6 +51,9 @@ export async function POST(request: Request, { params }: Params) {
         transactionCheckId: id,
         userId: session.userId,
         reason: body.reason,
+        assignments: authority
+          ? { create: { officerId: authority.id, assignedBy: "SYSTEM:USER_ESCALATION" } }
+          : undefined,
       },
     });
 

@@ -248,6 +248,7 @@ export async function runAnalysisPipeline(
     // material model-rule disagreement.
     await maybeEscalate({
       conversationId: opts.conversationId,
+      userId: conversation.userId,
       riskLevel: finalDecision.riskLevel,
       reason:
         finalDecision.riskLevel === "HIGH" || finalDecision.riskLevel === "CRITICAL"
