@@ -11,7 +11,10 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = "authority@nexus.com";
-  const password = "159753";
+  const password = process.env.AUTHORITY_PASSWORD;
+  if (!password) {
+    throw new Error("AUTHORITY_PASSWORD is required and must not be committed to the repository");
+  }
   const passwordHash = await bcrypt.hash(password, 12);
 
   const authority = await prisma.officer.upsert({

@@ -116,6 +116,12 @@ OFFICER_EMAIL=officer@nexus.local OFFICER_PASSWORD='a-strong-password' \
 OFFICER_NAME="Aarav Sharma" OFFICER_ROLE=ADMIN npm run seed:officer
 ```
 
+The authority account is seeded without storing its password in Git:
+
+```bash
+AUTHORITY_PASSWORD='your-authority-password' npm run seed:authority
+```
+
 ## Tests
 
 ```bash
