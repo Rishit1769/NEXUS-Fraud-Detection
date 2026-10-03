@@ -7,12 +7,12 @@ import type { AnalysisSignal } from "./types";
  */
 
 const CREDENTIAL_PATTERNS: RegExp[] = [
-  /\b(otp|one[- ]?time[- ]?password|verification code|secure code|auth code)\b/i,
-  /\b(password|passcode|pass word)\b/i,
-  /\b(pin|cvv|cvc|card number|debit card|credit card)\b/i,
-  /\b(account details|bank details|internet banking|netbanking)\b/i,
-  /\b(kyc|aadhaar|pan card|passport number|identity proof)\b/i,
-  /\b(share your|send me your|update your|verify your)\b.+(otp|password|pin|details)/i,
+  // A credential word by itself is not a request: "Your OTP is 123456. Do
+  // not share it" is a normal security notification. Require an action
+  // verb near the credential instead.
+  /\b(share|send|provide|tell|give|forward|reply with|enter|type|confirm|verify)\b.{0,60}\b(otp|one[- ]?time[- ]?password|verification code|secure code|auth code|password|passcode|pass word|pin|cvv|cvc|card number|debit card|credit card|account details|bank details|internet banking|netbanking|kyc|aadhaar|pan card|passport number|identity proof)\b/i,
+  /\b(otp|one[- ]?time[- ]?password|verification code|secure code|auth code|password|passcode|pin|cvv|cvc|card number|account details|bank details)\b.{0,40}\b(share|send|provide|tell|give|forward)\b/i,
+  /\b(need|require|request)\b.{0,40}\b(your )?(otp|verification code|password|passcode|pin|cvv|card number|account details|bank details)\b/i,
 ];
 
 const PAYMENT_PATTERNS: RegExp[] = [
@@ -63,6 +63,9 @@ const SECRET_PRESSURE_PATTERNS: RegExp[] = [
   /\b(only you can|you alone|nobody else)\b/i,
 ];
 
+const SAFE_CREDENTIAL_NOTIFICATION =
+  /\b(your|the)\s+(otp|one[- ]?time[- ]?password|verification code)\b.{0,50}\b(do not|never)\s+share\b/i;
+
 /** True when the text contains heavy punctuation or shouting. */
 export function hasExcessivePunctuation(text: string): boolean {
   return /!{3,}/.test(text) || /!{2,}\s*[A-Z]/.test(text);
@@ -79,7 +82,10 @@ export function extractSignals(text: string): AnalysisSignal[] {
   const push = (type: string, description: string) =>
     signals.push({ type, description });
 
-  if (CREDENTIAL_PATTERNS.some((re) => re.test(text))) {
+  if (
+    !SAFE_CREDENTIAL_NOTIFICATION.test(text) &&
+    CREDENTIAL_PATTERNS.some((re) => re.test(text))
+  ) {
     push(
       "credential_or_otp_request",
       "The message asks for an OTP, password, PIN, card, or identity details."

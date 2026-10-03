@@ -6,7 +6,7 @@ import { extractUrls } from "@/lib/url-extraction";
 import { explainWithAi } from "@/lib/ai-explain";
 import { predictWithModel } from "@/lib/model-api";
 import { analyzeMessage } from "./engine";
-import { scoreToRiskLevel } from "./rules";
+import { isKnownSafeHost, scoreToRiskLevel } from "./rules";
 import { maybeEscalate } from "./escalation";
 import type { ProviderUrlCheck } from "./types";
 
@@ -42,8 +42,17 @@ function riskRank(level: string): number {
 function combineFinalDecision(input: {
   deterministicScore: number;
   model?: { probability: number } | null;
+  urls?: { host?: string | null }[];
 }): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
-  const modelScore = input.model ? Math.round(input.model.probability * 100) : 0;
+  const onlyKnownSafeUrls =
+    Boolean(input.urls?.length) && input.urls!.every((url) => isKnownSafeHost(url.host));
+  // A weak model probability is not calibrated evidence. The old behavior
+  // turned an otherwise clean message into 10/100. Also prevent a legacy URL
+  // artifact from overriding a known-safe host such as google.com.
+  const modelScore =
+    input.model && input.model.probability >= 0.5 && !onlyKnownSafeUrls
+      ? Math.round(input.model.probability * 100)
+      : 0;
   const score = Math.max(input.deterministicScore, modelScore);
   return { score, riskLevel: scoreToRiskLevel(score) };
 }
@@ -150,6 +159,7 @@ export async function runAnalysisPipeline(
     const finalDecision = combineFinalDecision({
       deterministicScore: deterministic.score,
       model: model?.message,
+      urls,
     });
 
     const providerResults: Record<string, unknown> = {};

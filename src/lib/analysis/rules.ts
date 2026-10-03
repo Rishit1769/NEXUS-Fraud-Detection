@@ -13,7 +13,7 @@ import type {
  * Each rule produces points and a human-readable description. The scoring
  * model mirrors the product blueprint:
  *
- *   credential_or_otp_request       +25
+ *   credential_or_otp_request       +45
  *   payment_or_bank_request         +20
  *   urgent_threat_language          +15
  *   brand_host_mismatch             +20
@@ -70,6 +70,14 @@ const KNOWN_BRAND_DOMAINS: Record<string, string[]> = {
   telegram: ["telegram.org"],
   irctc: ["irctc.co.in"],
 };
+
+/** Domains for which the URL model must not override a clean result. */
+export function isKnownSafeHost(host: string | null | undefined): boolean {
+  const normalized = host?.toLowerCase().replace(/^www\./, "") ?? "";
+  return Object.values(KNOWN_BRAND_DOMAINS)
+    .flat()
+    .some((domain) => normalized === domain || normalized.endsWith(`.${domain}`));
+}
 
 function hasSignal(signals: AnalysisSignal[], type: string): boolean {
   return signals.some((s) => s.type === type);
@@ -133,9 +141,9 @@ function providerClean(input: AnalysisInput): boolean {
 export const RULES: Rule[] = [
   {
     id: "credential_or_otp_request",
-    points: 25,
+    points: 45,
     severity: "high",
-    evaluate: (_, s) => (hasSignal(s, "credential_or_otp_request") ? 25 : 0),
+    evaluate: (_, s) => (hasSignal(s, "credential_or_otp_request") ? 45 : 0),
     describe: () => "The message requests credentials, OTPs, PINs, or card details.",
   },
   {

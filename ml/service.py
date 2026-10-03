@@ -10,6 +10,7 @@ import pandas as pd
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from xgboost import XGBClassifier
+from urllib.parse import urlparse
 
 from nexus_ml.features import (
     message_feature_frame,
@@ -26,6 +27,13 @@ API_SECRET = os.getenv("MODEL_API_SECRET", "")
 # Fail closed by default: production must not silently serve legacy artifacts
 # that ignore the LLM-derived inputs.
 REQUIRE_LLM_FEATURES = os.getenv("REQUIRE_LLM_FEATURES", "true").lower() in {"1", "true", "yes"}
+
+KNOWN_SAFE_DOMAINS = {
+    "google.com", "gmail.com", "google.co.in", "hdfcbank.com", "sbi.co.in",
+    "onlinesbi.sbi", "icicibank.com", "axisbank.com", "paypal.com",
+    "amazon.com", "amazon.in", "netflix.com", "whatsapp.com", "instagram.com",
+    "microsoft.com", "apple.com", "telegram.org", "irctc.co.in",
+}
 
 
 class PredictRequest(BaseModel):
@@ -117,6 +125,11 @@ def _risk_level(probability: float) -> str:
     if probability >= 0.50:
         return "MEDIUM"
     return "LOW"
+
+
+def _is_known_safe_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return any(host == domain or host.endswith("." + domain) for domain in KNOWN_SAFE_DOMAINS)
 
 
 def _predict(task: str, frame: pd.DataFrame, llm_analysis: dict[str, Any] | None = None) -> Prediction | None:
@@ -245,6 +258,15 @@ def predict(payload: PredictRequest, x_model_api_key: str | None = Header(defaul
         # Lexical head scores raw URLs directly; urlFeatures enrichment is
         # reserved for a future page-level head and is not required.
         prediction = _predict("url", url_lexical_frame(pd.Series([url])), payload.llmAnalysis)
+        if prediction is not None and _is_known_safe_url(url):
+            # The legacy lexical URL artifact overweights HTTP vs HTTPS. Keep
+            # the prediction endpoint safe while the artifact is retrained;
+            # deterministic host checks still explain suspicious lookalikes.
+            prediction = prediction.copy(update={
+                "probability": 0.0,
+                "riskLevel": "LOW",
+                "topFeatures": [],
+            })
         if prediction is not None:
             url_predictions.append(prediction)
 

@@ -13,6 +13,17 @@ describe("extractSignals", () => {
     expect(signals.some((s) => s.type === "impersonation_claim")).toBe(true);
   });
 
+  it("detects a direct OTP request but not a normal OTP notification", () => {
+    expect(
+      extractSignals("Please send your OTP to complete the verification.")
+        .some((s) => s.type === "credential_or_otp_request")
+    ).toBe(true);
+    expect(
+      extractSignals("Your OTP is 123456. Do not share it with anyone.")
+        .some((s) => s.type === "credential_or_otp_request")
+    ).toBe(false);
+  });
+
   it("detects prize scams", () => {
     const signals = extractSignals(
       "Congratulations! You have won a free iPhone. Pay a small processing fee to claim your prize."
@@ -72,6 +83,12 @@ describe("runRules / scoring", () => {
     });
     expect(result.score).toBeGreaterThanOrEqual(45);
     expect(["HIGH", "CRITICAL"]).toContain(result.riskLevel);
+  });
+
+  it("scores a direct OTP request as HIGH", () => {
+    const result = runRules({ text: "Please send your OTP", urls: [] });
+    expect(result.score).toBe(45);
+    expect(result.riskLevel).toBe("HIGH");
   });
 
   it("adds points for shortened URLs", () => {

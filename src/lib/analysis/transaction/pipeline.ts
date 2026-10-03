@@ -21,7 +21,10 @@ function combineFinalDecision(input: {
   deterministicScore: number;
   model?: { probability: number } | null;
 }): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
-  const modelScore = input.model ? Math.round(input.model.probability * 100) : 0;
+  const modelScore =
+    input.model && input.model.probability >= 0.5
+      ? Math.round(input.model.probability * 100)
+      : 0;
   const score = Math.max(input.deterministicScore, modelScore);
   return { score, riskLevel: scoreToRiskLevel(score) };
 }
