@@ -6,7 +6,7 @@ import { extractUrls } from "@/lib/url-extraction";
 import { explainWithAi } from "@/lib/ai-explain";
 import { predictWithModel } from "@/lib/model-api";
 import { analyzeMessage } from "./engine";
-import { isKnownSafeHost, scoreToRiskLevel } from "./rules";
+import { scoreToRiskLevel } from "./rules";
 import { maybeEscalate } from "./escalation";
 import type { ProviderUrlCheck } from "./types";
 
@@ -33,34 +33,30 @@ function riskRank(level: string): number {
   return { UNKNOWN: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 }[level] ?? 0;
 }
 
-/**
- * Final policy stage. Deterministic rules are the safety floor: the trained
- * model may raise the result, but can never lower a hard rule result. The LLM
- * remains advisory and is persisted separately because its score is not
- * calibrated for production risk decisions.
- */
+const AI_RISK_LEVELS = new Set(["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+/** Final policy stage: the LLM owns the user-facing result when available. */
 function combineFinalDecision(input: {
   deterministicScore: number;
-  model?: { probability: number } | null;
-  urls?: { host?: string | null }[];
+  ai?: { proposedScore: number; proposedRiskLevel: string } | null;
 }): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
-  const onlyKnownSafeUrls =
-    Boolean(input.urls?.length) && input.urls!.every((url) => isKnownSafeHost(url.host));
-  // A weak model probability is not calibrated evidence. The old behavior
-  // turned an otherwise clean message into 10/100. Also prevent a legacy URL
-  // artifact from overriding a known-safe host such as google.com.
-  const modelScore =
-    input.model && input.model.probability >= 0.5 && !onlyKnownSafeUrls
-      ? Math.round(input.model.probability * 100)
-      : 0;
-  const score = Math.max(input.deterministicScore, modelScore);
-  return { score, riskLevel: scoreToRiskLevel(score) };
+  if (!input.ai) {
+    return {
+      score: input.deterministicScore,
+      riskLevel: scoreToRiskLevel(input.deterministicScore),
+    };
+  }
+  const score = Math.max(0, Math.min(100, Math.round(input.ai.proposedScore)));
+  const riskLevel = AI_RISK_LEVELS.has(input.ai.proposedRiskLevel)
+    ? (input.ai.proposedRiskLevel as ReturnType<typeof scoreToRiskLevel>)
+    : scoreToRiskLevel(score);
+  return { score, riskLevel };
 }
 
 /**
  * Runs the layered analysis pipeline for a conversation:
  * 1. deterministic signals + rules (always)
- * 2. optional AI explanation (never allowed to override the score)
+ * 2. optional AI explanation (source of the final user-facing score)
  * 3. persistence of the result, indicators, and URL checks
  * 4. automatic escalation of HIGH/CRITICAL or model-rule disagreement
  *
@@ -125,8 +121,8 @@ export async function runAnalysisPipeline(
       providerChecks: opts.providerChecks,
     });
 
-    // Stage 2: optional LLM analysis. It explains the deterministic evidence
-    // and produces an advisory suggestion before the trained model runs.
+    // Stage 2: LLM analysis. It receives deterministic evidence as grounded
+    // context and produces the user-facing decision before XGBoost runs.
     const aiConfig = await getAiConfig();
     const ai = aiConfig
       ? await explainWithAi({
@@ -154,12 +150,11 @@ export async function runAnalysisPipeline(
         : null,
     });
 
-    // Stage 4: final policy. Deterministic rules remain the safety floor;
-    // XGBoost may raise the score. LLM output is advisory only.
+    // Stage 4: final policy. The LLM owns the final answer; deterministic and
+    // XGBoost outputs remain persisted for grounding, audit, and comparison.
     const finalDecision = combineFinalDecision({
       deterministicScore: deterministic.score,
-      model: model?.message,
-      urls,
+      ai,
     });
 
     const providerResults: Record<string, unknown> = {};

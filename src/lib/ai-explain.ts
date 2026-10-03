@@ -4,10 +4,9 @@ import type { DeterministicAnalysis, ExtractedUrlLike } from "@/lib/analysis/typ
 /**
  * Optional AI explanation client (provider-swappable, OpenAI-compatible).
  *
- * Per product principle 7, the AI explains and recommends but never
- * decides: the final score/risk level always comes from the deterministic
- * rule engine. Which provider/model serves this is chosen by the admin
- * (SystemSetting override) with env as the default.
+ * The LLM is the final decision maker for the user-facing result. The
+ * deterministic engine is still always run first and is supplied as grounded
+ * context; XGBoost runs afterwards and remains available for audit/comparison.
  *
  * Default provider is OpenCode's Go gateway, which (for third-party clients)
  * requires a descriptive User-Agent and a stable `x-opencode-session` header.
@@ -43,7 +42,7 @@ You receive a normalized message, extracted URLs, deterministic signals, and rul
 
 HARD RULES:
 - You are NOT the source of facts. Never invent URLs, providers, evidence, or lookup results.
-- Never override the deterministic score. The "score" you return must be your proposed score for comparison only; it must not be presented as the official score.
+- Make the final risk decision from the message, URLs, and deterministic evidence. Your score and riskLevel are the official user-facing result when returned successfully.
 - Do not repeat credentials, OTPs, or personal data from the message.
 - Respond with a single JSON object, no markdown fences, matching this shape:
 {"riskLevel":"LOW|MEDIUM|HIGH|CRITICAL|UNKNOWN","score":0,"confidence":0.0,"summary":"short user-safe explanation","evidence":[{"type":"string","severity":"low|medium|high|critical","description":"string"}],"safeNextSteps":["..."],"limitations":["..."]}

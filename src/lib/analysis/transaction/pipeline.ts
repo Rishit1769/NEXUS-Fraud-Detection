@@ -19,14 +19,17 @@ function riskRank(level: string): number {
 
 function combineFinalDecision(input: {
   deterministicScore: number;
-  model?: { probability: number } | null;
+  ai?: { proposedScore: number; proposedRiskLevel: string } | null;
 }): { score: number; riskLevel: ReturnType<typeof scoreToRiskLevel> } {
-  const modelScore =
-    input.model && input.model.probability >= 0.5
-      ? Math.round(input.model.probability * 100)
-      : 0;
-  const score = Math.max(input.deterministicScore, modelScore);
-  return { score, riskLevel: scoreToRiskLevel(score) };
+  if (!input.ai) {
+    return { score: input.deterministicScore, riskLevel: scoreToRiskLevel(input.deterministicScore) };
+  }
+  const score = Math.max(0, Math.min(100, Math.round(input.ai.proposedScore)));
+  const validRisk = new Set(["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+  const riskLevel = validRisk.has(input.ai.proposedRiskLevel)
+    ? (input.ai.proposedRiskLevel as ReturnType<typeof scoreToRiskLevel>)
+    : scoreToRiskLevel(score);
+  return { score, riskLevel };
 }
 
 function txnSummaryInput(check: {
@@ -123,10 +126,7 @@ export async function runTransactionPipeline(
       },
     });
 
-    const finalDecision = combineFinalDecision({
-      deterministicScore: deterministic.score,
-      model,
-    });
+    const finalDecision = combineFinalDecision({ deterministicScore: deterministic.score, ai });
 
     const providerResults: Record<string, unknown> = {};
     if (model) {
