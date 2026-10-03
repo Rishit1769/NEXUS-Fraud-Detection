@@ -147,6 +147,22 @@ describe("runRules / scoring", () => {
     ).toBe(true);
   });
 
+  it("flags one-character brand lookalikes such as rnicrosoft.com", () => {
+    const result = runRules({
+      text: "Visit https://rnicrosoft.com",
+      urls: [{
+        rawUrl: "https://rnicrosoft.com",
+        normalizedUrl: "https://rnicrosoft.com",
+        normalizedHash: "lookalike",
+        host: "rnicrosoft.com",
+      }],
+    });
+    expect(
+      result.ruleResults.some((r) => r.ruleId === "known_brand_lookalike_domain")
+    ).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(35);
+  });
+
   it("flags brand/host mismatch", () => {
     const result = runRules({
       text: "Amazon order delayed, confirm here: https://amazon-refunds-claims.com",

@@ -119,6 +119,48 @@ function hasPunycodeOrLookalike(input: AnalysisInput): boolean {
   });
 }
 
+function editDistance(left: string, right: string): number {
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = row[0];
+    row[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const above = row[j];
+      row[j] = Math.min(
+        row[j] + 1,
+        row[j - 1] + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+      diagonal = above;
+    }
+  }
+  return row[right.length];
+}
+
+function hasKnownBrandLookalike(input: AnalysisInput): boolean {
+  return input.urls.some((url) => {
+    const host = url.host?.toLowerCase().replace(/^www\./, "") ?? "";
+    const hostParts = host.split(".");
+    if (hostParts.length < 2) return false;
+    const tld = hostParts.slice(-1)[0];
+    const label = hostParts[hostParts.length - 2];
+    return Object.values(KNOWN_BRAND_DOMAINS)
+      .flat()
+      .some((domain) => {
+        const parts = domain.split(".");
+        const brandLabel = parts[0];
+        const brandTld = parts[parts.length - 1];
+        return (
+          tld === brandTld &&
+          label !== brandLabel &&
+          // Catch substitutions such as rnicrosoft -> microsoft (the
+          // attacker replaces one glyph with the two-character "rn" pair).
+          editDistance(label, brandLabel) <= 2
+        );
+      });
+  });
+}
+
 function hasShortenedUrl(input: AnalysisInput): boolean {
   return input.urls.some((u) => {
     const host = u.host?.toLowerCase() ?? "";
@@ -216,6 +258,13 @@ export const RULES: Rule[] = [
     severity: "high",
     evaluate: (i) => (hasPunycodeOrLookalike(i) ? 20 : 0),
     describe: () => "The message contains a punycode, lookalike, or IP-address domain.",
+  },
+  {
+    id: "known_brand_lookalike_domain",
+    points: 35,
+    severity: "critical",
+    evaluate: (i) => (hasKnownBrandLookalike(i) ? 35 : 0),
+    describe: () => "The URL closely imitates a known brand domain and may be a phishing lookalike.",
   },
   {
     id: "brand_host_mismatch",
