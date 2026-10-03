@@ -63,6 +63,11 @@ describe("extractSignals", () => {
     );
     expect(signals).toHaveLength(0);
   });
+
+  it("does not treat a brand name inside a URL as an impersonation claim", () => {
+    const signals = extractSignals("https://google.com");
+    expect(signals.some((s) => s.type === "impersonation_claim")).toBe(false);
+  });
 });
 
 describe("runRules / scoring", () => {

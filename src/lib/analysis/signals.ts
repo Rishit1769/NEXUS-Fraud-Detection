@@ -81,6 +81,9 @@ export function extractSignals(text: string): AnalysisSignal[] {
   const signals: AnalysisSignal[] = [];
   const push = (type: string, description: string) =>
     signals.push({ type, description });
+  // A brand name inside a URL is not an impersonation claim by itself.
+  // `https://google.com` must not be treated like “I am Google support”.
+  const messageWords = text.replace(/\b(?:https?|ftp):\/\/[^\s]+/gi, " ");
 
   if (
     !SAFE_CREDENTIAL_NOTIFICATION.test(text) &&
@@ -106,7 +109,7 @@ export function extractSignals(text: string): AnalysisSignal[] {
     );
   }
 
-  if (IMPERSONATION_PATTERNS.some((re) => re.test(text))) {
+  if (IMPERSONATION_PATTERNS.some((re) => re.test(messageWords))) {
     push(
       "impersonation_claim",
       "The message claims to be from a known bank, company, or support team."
