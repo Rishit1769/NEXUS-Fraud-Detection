@@ -1,4 +1,5 @@
 import { extractSignals, hasExcessivePunctuation, isShouting } from "./signals";
+import { isTrustedRootDomain } from "./trusted-domains";
 import type {
   AnalysisInput,
   AnalysisSignal,
@@ -65,6 +66,8 @@ const KNOWN_BRAND_DOMAINS: Record<string, string[]> = {
   whatsapp: ["whatsapp.com"],
   instagram: ["instagram.com"],
   google: ["google.com", "gmail.com"],
+  meta: ["meta.com"],
+  facebook: ["facebook.com"],
   microsoft: ["microsoft.com"],
   apple: ["apple.com"],
   telegram: ["telegram.org"],
@@ -73,10 +76,7 @@ const KNOWN_BRAND_DOMAINS: Record<string, string[]> = {
 
 /** Domains for which the URL model must not override a clean result. */
 export function isKnownSafeHost(host: string | null | undefined): boolean {
-  const normalized = host?.toLowerCase().replace(/^www\./, "") ?? "";
-  return Object.values(KNOWN_BRAND_DOMAINS)
-    .flat()
-    .some((domain) => normalized === domain || normalized.endsWith(`.${domain}`));
+  return isTrustedRootDomain(host);
 }
 
 function hasSignal(signals: AnalysisSignal[], type: string): boolean {

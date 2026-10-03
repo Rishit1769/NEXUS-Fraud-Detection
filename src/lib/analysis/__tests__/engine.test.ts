@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeMessage } from "../engine";
 import { runRules, scoreToRiskLevel } from "../rules";
 import { extractSignals } from "../signals";
+import { isKnownSafeHost } from "../rules";
 
 describe("extractSignals", () => {
   it("detects OTP requests", () => {
@@ -65,6 +66,12 @@ describe("extractSignals", () => {
 });
 
 describe("runRules / scoring", () => {
+  it("recognizes trusted legacy roots and their subdomains", () => {
+    expect(isKnownSafeHost("www.google.com")).toBe(true);
+    expect(isKnownSafeHost("auth.meta.com")).toBe(true);
+    expect(isKnownSafeHost("google.com.evil.example")).toBe(false);
+    expect(isKnownSafeHost("google-login.example")).toBe(false);
+  });
   it("maps scores to risk levels per the blueprint thresholds", () => {
     expect(scoreToRiskLevel(0)).toBe("LOW");
     expect(scoreToRiskLevel(19)).toBe("LOW");

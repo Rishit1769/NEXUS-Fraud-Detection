@@ -29,10 +29,18 @@ API_SECRET = os.getenv("MODEL_API_SECRET", "")
 REQUIRE_LLM_FEATURES = os.getenv("REQUIRE_LLM_FEATURES", "true").lower() in {"1", "true", "yes"}
 
 KNOWN_SAFE_DOMAINS = {
-    "google.com", "gmail.com", "google.co.in", "hdfcbank.com", "sbi.co.in",
-    "onlinesbi.sbi", "icicibank.com", "axisbank.com", "paypal.com",
-    "amazon.com", "amazon.in", "netflix.com", "whatsapp.com", "instagram.com",
-    "microsoft.com", "apple.com", "telegram.org", "irctc.co.in",
+    "google.com", "gmail.com", "google.co.in", "youtube.com",
+    "microsoft.com", "outlook.com", "office.com", "live.com", "azure.com",
+    "apple.com", "icloud.com", "amazon.com", "amazon.in", "aws.amazon.com",
+    "meta.com", "facebook.com", "instagram.com", "whatsapp.com",
+    "linkedin.com", "github.com", "gitlab.com", "bitbucket.org",
+    "wikipedia.org", "reddit.com", "x.com", "twitter.com",
+    "netflix.com", "spotify.com", "discord.com", "slack.com", "zoom.us",
+    "paypal.com", "stripe.com", "adobe.com", "dropbox.com", "notion.so",
+    "openai.com", "cloudflare.com", "stackoverflow.com", "stackexchange.com",
+    "hdfcbank.com", "sbi.co.in", "onlinesbi.sbi", "icicibank.com",
+    "axisbank.com", "kotak.com", "pnbindia.in", "canarabank.com",
+    "irctc.co.in", "telegram.org", "signal.org",
 }
 
 
